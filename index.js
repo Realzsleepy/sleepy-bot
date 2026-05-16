@@ -19,6 +19,8 @@ const client = new Client({
 });
 
 const app = express();
+app.set('view engine', 'ejs');
+app.set('views', './website/views');
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static('website/public'));
 
@@ -185,12 +187,22 @@ app.get('/auth/discord/callback', passport.authenticate('discord',{failureRedire
 app.get('/logout',(req,res)=>req.logout(()=>res.redirect('/')));
 
 // ================= WEBSITE =================
-app.get('/', checkAuth, (req,res)=>{
-  res.send(`<link rel="stylesheet" href="/style.css">
-  <h2>Welcome ${req.user.username}</h2>
-  <a href="/warns">Manage Warns</a><br>
-  <a href="/commands">Manage Commands</a><br>
-  <a href="/logout">Logout</a>`);
+app.get('/', (req, res) => {
+  if (!req.user) {
+    return res.send(`
+      <body style="background:#111827;color:white;font-family:Arial;text-align:center;padding-top:100px;">
+        <h1>Sleepy Bot Dashboard</h1>
+        <a href="/auth/discord"
+        style="background:#5865F2;padding:15px 25px;border-radius:10px;color:white;text-decoration:none;">
+        Login with Discord
+        </a>
+      </body>
+    `);
+  }
+
+  res.render('dashboard', {
+    user: req.user
+  });
 });
 
 // SEARCH WARNS
