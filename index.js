@@ -174,7 +174,7 @@ passport.deserializeUser((o,d)=>d(null,o));
 passport.use(new DiscordStrategy({
   clientID: process.env.CLIENT_ID,
   clientSecret: process.env.CLIENT_SECRET,
-  callbackURL: '/auth/discord/callback',
+  callbackURL: "https://sleepy-bot-wiia.onrender.com/auth/discord/callback",
   scope: ['identify']
 }, (a,r,p,done)=>done(null,p)));
 
