@@ -29,10 +29,13 @@ passport.deserializeUser((obj, done) => done(null, obj));
 passport.use(new DiscordStrategy({
   clientID: process.env.CLIENT_ID,
   clientSecret: process.env.CLIENT_SECRET,
-  callbackURL: 'https://sleepy-bot-wiia.onrender.com/auth/discord/callback',
-  scope: ['identify']
-}, (accessToken, refreshToken, profile, done) => {
-  done(null, profile);
+  callbackURL: "https://sleepy-bot-wiia.onrender.com/auth/discord/callback",
+  scope: ["identify"]
+},
+function(accessToken, refreshToken, profile, done) {
+  process.nextTick(function() {
+    return done(null, profile);
+  });
 }));
 
 // HELPERS
@@ -64,10 +67,19 @@ app.get('/', (req, res) => {
 });
 
 // LOGIN
-app.get('/auth/discord', passport.authenticate('discord'));
+app.get('/auth/discord',
+  passport.authenticate('discord', {
+    scope: ['identify']
+  })
+);
+
 app.get('/auth/discord/callback',
-  passport.authenticate('discord', { failureRedirect: '/' }),
-  (req, res) => res.redirect('/')
+  passport.authenticate('discord', {
+    failureRedirect: '/'
+  }),
+  function(req, res) {
+    res.redirect('/');
+  }
 );
 
 // LOGOUT
