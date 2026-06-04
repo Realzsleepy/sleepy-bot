@@ -15,7 +15,12 @@ const DiscordStrategy = require('passport-discord').Strategy;
 const fs = require('fs');
 
 const client = new Client({
-  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers]
+  intents: [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMembers,
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.MessageContent
+  ]
 });
 
 const app = express();
@@ -91,15 +96,71 @@ app.get('/settings', checkAuth, (req,res)=>{
   `);
 });
 
-app.post('/settings', checkAuth, (req,res)=>{
+app.get('/settings', checkAuth, (req,res)=>{
 
-  saveSettings({
-    logChannel: req.body.logChannel,
-    antiLinks: !!req.body.antiLinks,
-    antiSpam: !!req.body.antiSpam
-  });
+  const settings = loadSettings();
 
-  res.redirect('/settings');
+  res.send(`
+  <body style="
+    background:#111827;
+    color:white;
+    font-family:Arial;
+    padding:30px;
+  ">
+
+  <h1>⚙ AutoMod Settings</h1>
+
+  <form method="POST" action="/settings">
+
+    <h3>Log Channel ID</h3>
+
+    <input
+      name="logChannel"
+      value="${settings.logChannel || ''}"
+      style="width:300px">
+
+    <br><br><hr><br>
+
+    <label>
+      <input
+        type="checkbox"
+        name="antiLinks"
+        ${settings.antiLinks ? 'checked' : ''}>
+      Anti Links
+    </label>
+
+    <br><br>
+
+    <label>
+      <input
+        type="checkbox"
+        name="antiSpam"
+        ${settings.antiSpam ? 'checked' : ''}>
+      Anti Spam
+    </label>
+
+    <br><br>
+
+    <label>
+      <input
+        type="checkbox"
+        name="capsFilter"
+        ${settings.capsFilter ? 'checked' : ''}>
+      Caps Filter
+    </label>
+
+    <br><br>
+
+    <button>Save Settings</button>
+
+  </form>
+
+  <br>
+
+  <a href="/">Back</a>
+
+  </body>
+  `);
 });
 
 // ================= LOG CHANNEL FUNCTION =================
@@ -222,6 +283,82 @@ client.on('interactionCreate', async interaction => {
     interaction.reply(`User timed out for ${minutes} minutes.`);
     logAction(guild, 'User Timed Out', `${user.tag} for ${minutes} minutes`);
   }
+});
+
+client.on('messageCreate', async message => {
+
+  if(message.author.bot) return;
+  if(!message.guild) return;
+
+  const settings = loadSettings();
+
+  // ANTI LINKS
+  if(settings.antiLinks){
+
+    const linkRegex = /(https?:\/\/|www\.)/i;
+
+    if(linkRegex.test(message.content)){
+
+      await message.delete().catch(()=>{});
+
+      logAction(
+        message.guild,
+        'Anti Link',
+        `${message.author.tag} posted a link`
+      );
+
+      return;
+    }
+  }
+
+  // ANTI SPAM
+  if(settings.antiSpam){
+
+    if(message.content.length > 300){
+
+      await message.delete().catch(()=>{});
+
+      logAction(
+        message.guild,
+        'Anti Spam',
+        `${message.author.tag} triggered spam filter`
+      );
+
+      return;
+    }
+  }
+
+  // CAPS FILTER
+  if(settings.capsFilter){
+
+    const text =
+      message.content.replace(/[^a-zA-Z]/g,'');
+
+    if(text.length > 8){
+
+      const caps =
+        text.split('').filter(
+          c => c === c.toUpperCase()
+        ).length;
+
+      const percent =
+        (caps / text.length) * 100;
+
+      if(percent > 70){
+
+        await message.delete().catch(()=>{});
+
+        logAction(
+          message.guild,
+          'Caps Filter',
+          `${message.author.tag} used excessive caps`
+        );
+
+        return;
+      }
+    }
+  }
+
 });
 
 client.once('ready', () => {
