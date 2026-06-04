@@ -41,6 +41,16 @@ const saveCommands = d => fs.writeFileSync(COMMANDS_FILE, JSON.stringify(d, null
 const loadWarns = () => JSON.parse(fs.readFileSync(WARNS_FILE));
 const saveWarns = d => fs.writeFileSync(WARNS_FILE, JSON.stringify(d, null, 2));
 const SETTINGS_FILE = './settings.json';
+const MODLOGS_FILE = './modlogs.json';
+
+if (!fs.existsSync(MODLOGS_FILE))
+  fs.writeFileSync(MODLOGS_FILE, '[]');
+
+const loadModLogs = () =>
+  JSON.parse(fs.readFileSync(MODLOGS_FILE));
+
+const saveModLogs = d =>
+  fs.writeFileSync(MODLOGS_FILE, JSON.stringify(d,null,2));
 
 if (!fs.existsSync(SETTINGS_FILE))
   fs.writeFileSync(SETTINGS_FILE, '{}');
@@ -165,10 +175,24 @@ app.get('/settings', checkAuth, (req,res)=>{
 
 // ================= LOG CHANNEL FUNCTION =================
 async function logAction(guild, title, description) {
+
+  const logs = loadModLogs();
+
+  logs.unshift({
+    title,
+    description,
+    guild: guild.name,
+    date: new Date().toLocaleString()
+  });
+
+  saveModLogs(logs);
+
   const channelId = process.env.LOG_CHANNEL_ID;
+
   if (!channelId) return;
 
   const channel = guild.channels.cache.get(channelId);
+
   if (!channel) return;
 
   const embed = new EmbedBuilder()
@@ -177,7 +201,9 @@ async function logAction(guild, title, description) {
     .setColor('Orange')
     .setTimestamp();
 
-  channel.send({ embeds: [embed] }).catch(() => {});
+  channel.send({
+    embeds:[embed]
+  }).catch(()=>{});
 }
 
 // ================= SLASH COMMANDS =================
@@ -429,7 +455,9 @@ res.render('dashboard', {
 
 // SEARCH WARNS
 app.get('/warns', checkAuth, async (req, res) => {
-  const warns = loadWarns();
+  username.toLowerCase().includes(
+   search.toLowerCase()
+  )
 
   let html = `
   <body style="background:#111827;color:white;font-family:Arial;padding:30px">
@@ -441,6 +469,18 @@ app.get('/warns', checkAuth, async (req, res) => {
 
       const user = await client.users.fetch(userId).catch(() => null);
       const username = user ? user.username : userId;
+      if(search){
+
+  const searchText =
+    search.toLowerCase();
+
+  if(
+    !username.toLowerCase().includes(searchText) &&
+    !userId.includes(searchText)
+  ){
+    continue;
+  }
+}
 
       html += `
       <div style="
@@ -480,36 +520,23 @@ app.get('/warns', checkAuth, async (req, res) => {
   html += `<a href="/">Back to Dashboard</a></body>`;
 
   res.send(html);
-});
+  html += `
+<form>
+  <input
+    name="user"
+    placeholder="Username or User ID"
+    value="${search}">
+  <button>Search</button>
+</form>
 
-app.get('/warns', checkAuth, async (req,res)=>{
-  const search = req.query.user;
-  const warns = loadWarns();
-  let html = '<body style="background:#111827;color:white;font-family:Arial;padding:30px"><h1>Warnings</h1>';
+<br>
 
-  for(const guild in warns){
-    for(const userId in warns[guild]){
-      if(search && userId !== search) continue;
-      const user = await client.users.fetch(userId).catch(()=>null);
-      const tag = user ? user.tag : userId;
-
-      html += `<h3>${tag}</h3><ul>`;
-      warns[guild][userId].forEach((w,i)=>{
-        html += `<li>${w.reason} (${w.date})
-        <form method="POST" action="/delete-warn">
-        <input type="hidden" name="guild" value="${guild}">
-        <input type="hidden" name="user" value="${userId}">
-        <input type="hidden" name="index" value="${i}">
-        <button>Delete</button></form></li>`;
-      });
-      html+='</ul>';
-    }
-  }
-  html+=`<form><input name="user" placeholder="Search by User ID"><button>Search</button></form>`;
-  res.send(html+'<a href="/">Back</a>');
+<a href="/">Back to Dashboard</a>
+`;
 });
 
 app.post('/delete-warn', checkAuth, (req,res)=>{
+  app.use(express.urlencoded({ extended: true }));
   const warns = loadWarns();
   warns[req.body.guild][req.body.user].splice(req.body.index,1);
   saveWarns(warns);
@@ -608,6 +635,20 @@ app.get('/moderation', checkAuth, (req,res)=>{
     <input name="userid" placeholder="User ID">
     <button>Ban User</button>
   </form>
+  <form method="POST" action="/timeout-user">
+
+  <input
+  name="user"
+  placeholder="Username">
+
+  <input
+  name="minutes"
+  placeholder="Minutes"
+  style="width:80px">
+
+  <button>Timeout</button>
+
+  </form>
 
   <br>
 
@@ -622,6 +663,68 @@ app.get('/moderation', checkAuth, (req,res)=>{
 
   </body>
   `);
+});
+
+app.get('/modlogs', checkAuth, (req,res)=>{
+
+  const logs = loadModLogs();
+
+  let html = `
+  <body style="
+  background:#111827;
+  color:white;
+  font-family:Arial;
+  padding:30px">
+
+  <h1>Mod Logs</h1>
+  `;
+
+  logs.forEach(log=>{
+
+    html += `
+    <div style="
+      background:#1f2937;
+      padding:15px;
+      margin-bottom:15px;
+      border-radius:10px;
+    ">
+      <h3>${log.title}</h3>
+      <p>${log.description}</p>
+      <small>${log.guild}</small><br>
+      <small>${log.date}</small>
+    </div>
+    `;
+  });
+
+  html += `<a href="/">Back</a></body>`;
+
+  res.send(html);
+});
+
+app.post('/timeout-user', checkAuth, async (req,res)=>{
+
+  const guild =
+    client.guilds.cache.first();
+
+  const member =
+    await guild.members.fetch(
+      req.body.userId
+    );
+
+  const minutes =
+    Number(req.body.minutes);
+
+  await member.timeout(
+    minutes * 60000
+  );
+
+  logAction(
+    guild,
+    'Dashboard Timeout',
+    `${member.user.tag} (${minutes} minutes)`
+  );
+
+  res.redirect('/moderation');
 });
 
 app.listen(3000,()=>console.log('Website running on port 3000'));
