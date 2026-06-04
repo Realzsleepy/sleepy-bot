@@ -48,9 +48,17 @@
 
   <h1>Welcome <%= user.username %></h1>
 
+  <div style="margin-top:20px;">
+  <p>Servers: <%= stats.guilds %></p>
+  <p>Custom Commands: <%= stats.commands %></p>
+  <p>Total Warns: <%= stats.warns %></p>
+</div>
+
   <a class="btn" href="/commands">⚡ Manage Commands</a>
   <a class="btn" href="/warns">🛡 Manage Warns</a>
   <a class="btn" href="/logout">🚪 Logout</a>
+  <a class="btn" href="/moderation">🛡 Moderation</a>
+  <a class="btn" href="/settings">⚙ Settings</a>
 </div>
 
 </body>

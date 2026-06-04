@@ -35,6 +35,72 @@ const loadCommands = () => JSON.parse(fs.readFileSync(COMMANDS_FILE));
 const saveCommands = d => fs.writeFileSync(COMMANDS_FILE, JSON.stringify(d, null, 2));
 const loadWarns = () => JSON.parse(fs.readFileSync(WARNS_FILE));
 const saveWarns = d => fs.writeFileSync(WARNS_FILE, JSON.stringify(d, null, 2));
+const SETTINGS_FILE = './settings.json';
+
+if (!fs.existsSync(SETTINGS_FILE))
+  fs.writeFileSync(SETTINGS_FILE, '{}');
+
+const loadSettings = () =>
+  JSON.parse(fs.readFileSync(SETTINGS_FILE));
+
+const saveSettings = d =>
+  fs.writeFileSync(SETTINGS_FILE, JSON.stringify(d,null,2));
+
+app.get('/settings', checkAuth, (req,res)=>{
+
+  const settings = loadSettings();
+
+  res.send(`
+  <body style="background:#111827;color:white;font-family:Arial;padding:30px">
+
+  <h1>Settings</h1>
+
+  <form method="POST" action="/settings">
+
+  Log Channel ID<br>
+  <input name="logChannel"
+  value="${settings.logChannel || ''}">
+
+  <br><br>
+
+  Anti Links
+
+  <input type="checkbox"
+  name="antiLinks"
+  ${settings.antiLinks ? 'checked' : ''}>
+
+  <br><br>
+
+  Anti Spam
+
+  <input type="checkbox"
+  name="antiSpam"
+  ${settings.antiSpam ? 'checked' : ''}>
+
+  <br><br>
+
+  <button>Save</button>
+
+  </form>
+
+  <br>
+
+  <a href="/">Back</a>
+
+  </body>
+  `);
+});
+
+app.post('/settings', checkAuth, (req,res)=>{
+
+  saveSettings({
+    logChannel: req.body.logChannel,
+    antiLinks: !!req.body.antiLinks,
+    antiSpam: !!req.body.antiSpam
+  });
+
+  res.redirect('/settings');
+});
 
 // ================= LOG CHANNEL FUNCTION =================
 async function logAction(guild, title, description) {
@@ -203,9 +269,25 @@ app.get('/', (req, res) => {
     `);
   }
 
-  res.render('dashboard', {
-    user: req.user
-  });
+  const commands = loadCommands();
+const warns = loadWarns();
+
+let warnCount = 0;
+
+for (const guild in warns) {
+  for (const user in warns[guild]) {
+    warnCount += warns[guild][user].length;
+  }
+}
+
+res.render('dashboard', {
+  user: req.user,
+  stats: {
+    commands: Object.keys(commands).length,
+    warns: warnCount,
+    guilds: client.guilds.cache.size
+  }
+});
 });
 
 // SEARCH WARNS
@@ -369,6 +451,40 @@ app.post('/create-command', checkAuth, (req,res)=>{
   registerCommands();
 
   res.redirect('/commands');
+});
+
+app.get('/moderation', checkAuth, (req,res)=>{
+
+  res.send(`
+  <body style="background:#111827;color:white;font-family:Arial;padding:30px">
+
+  <h1>Moderation Panel</h1>
+
+  <form method="POST" action="/kick-user">
+    <input name="userid" placeholder="User ID">
+    <button>Kick User</button>
+  </form>
+
+  <br>
+
+  <form method="POST" action="/ban-user">
+    <input name="userid" placeholder="User ID">
+    <button>Ban User</button>
+  </form>
+
+  <br>
+
+  <form method="POST" action="/timeout-user">
+    <input name="userid" placeholder="User ID">
+    <input name="minutes" placeholder="Minutes">
+    <button>Timeout User</button>
+  </form>
+
+  <br>
+  <a href="/">Back</a>
+
+  </body>
+  `);
 });
 
 app.listen(3000,()=>console.log('Website running on port 3000'));
