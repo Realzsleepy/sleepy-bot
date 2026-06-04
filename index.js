@@ -180,9 +180,12 @@ passport.use(new DiscordStrategy({
   scope: ['identify']
 }, (a,r,p,done)=>done(null,p)));
 
-function checkAuth(req,res,next){ if(!req.user) return res.redirect('/login'); next(); }
+function checkAuth(req,res,next){
+  if(!req.user) return res.redirect('/auth/discord');
+  next();
+}
 
-app.get('/login', passport.authenticate('discord'));
+app.get('/auth/discord', passport.authenticate('discord'));
 app.get('/auth/discord/callback', passport.authenticate('discord',{failureRedirect:'/'}),(req,res)=>res.redirect('/'));
 app.get('/logout',(req,res)=>req.logout(()=>res.redirect('/')));
 
