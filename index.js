@@ -298,26 +298,77 @@ app.post('/delete-warn', checkAuth, (req,res)=>{
 });
 
 app.get('/commands', checkAuth, (req, res) => {
-  const commands = loadCommands();
+
+  const custom = loadCommands();
+
+  const builtIn = [
+    "warn",
+    "warncount",
+    "kick",
+    "ban",
+    "timeout"
+  ];
 
   let html = `
   <body style="background:#111827;color:white;font-family:Arial;padding:30px">
   <h1>Commands</h1>
+
+  <h2>Built-In Commands</h2>
   <ul>
   `;
 
-  for (const cmd in commands) {
-    html += `<li><b>/${cmd}</b> → ${commands[cmd]}</li>`;
+  builtIn.forEach(cmd=>{
+    html += `<li>/${cmd}</li>`;
+  });
+
+  html += `
+  </ul>
+
+  <h2>Custom Commands</h2>
+  <ul>
+  `;
+
+  for(const cmd in custom){
+    html += `
+    <li>
+      /${cmd} → ${custom[cmd]}
+    </li>
+    `;
   }
 
   html += `
   </ul>
+
+  <h2>Create Custom Command</h2>
+
+  <form method="POST" action="/create-command">
+    <input name="name" placeholder="Command name" required>
+    <br><br>
+    <input name="response" placeholder="Response" required>
+    <br><br>
+    <button>Create Command</button>
+  </form>
+
   <br>
-  <a href="/">Back to Dashboard</a>
+  <a href="/">Back</a>
   </body>
   `;
 
   res.send(html);
+});
+
+app.post('/create-command', checkAuth, (req,res)=>{
+
+  const commands = loadCommands();
+
+  commands[req.body.name.toLowerCase()] =
+    req.body.response;
+
+  saveCommands(commands);
+
+  registerCommands();
+
+  res.redirect('/commands');
 });
 
 app.listen(3000,()=>console.log('Website running on port 3000'));
