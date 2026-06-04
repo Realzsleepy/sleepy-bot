@@ -209,10 +209,64 @@ app.get('/', (req, res) => {
 });
 
 // SEARCH WARNS
+app.get('/warns', checkAuth, async (req, res) => {
+  const warns = loadWarns();
+
+  let html = `
+  <body style="background:#111827;color:white;font-family:Arial;padding:30px">
+  <h1>Manage Warns</h1>
+  `;
+
+  for (const guildId in warns) {
+    for (const userId in warns[guildId]) {
+
+      const user = await client.users.fetch(userId).catch(() => null);
+      const username = user ? user.username : userId;
+
+      html += `
+      <div style="
+        background:#1f2937;
+        padding:15px;
+        margin-bottom:20px;
+        border-radius:12px;
+      ">
+      <h2>${username}</h2>
+      `;
+
+      warns[guildId][userId].forEach((warn, index) => {
+        html += `
+        <div style="
+          background:#374151;
+          padding:10px;
+          margin:10px 0;
+          border-radius:8px;
+        ">
+          ${warn.reason}<br>
+          <small>${warn.date}</small>
+
+          <form method="POST" action="/delete-warn">
+            <input type="hidden" name="guild" value="${guildId}">
+            <input type="hidden" name="user" value="${userId}">
+            <input type="hidden" name="index" value="${index}">
+            <button>Delete Warn</button>
+          </form>
+        </div>
+        `;
+      });
+
+      html += `</div>`;
+    }
+  }
+
+  html += `<a href="/">Back to Dashboard</a></body>`;
+
+  res.send(html);
+});
+
 app.get('/warns', checkAuth, async (req,res)=>{
   const search = req.query.user;
   const warns = loadWarns();
-  let html = '<link rel="stylesheet" href="/style.css"><h2>Warns</h2>';
+  let html = '<body style="background:#111827;color:white;font-family:Arial;padding:30px"><h1>Warnings</h1>';
 
   for(const guild in warns){
     for(const userId in warns[guild]){
@@ -241,6 +295,29 @@ app.post('/delete-warn', checkAuth, (req,res)=>{
   warns[req.body.guild][req.body.user].splice(req.body.index,1);
   saveWarns(warns);
   res.redirect('/warns');
+});
+
+app.get('/commands', checkAuth, (req, res) => {
+  const commands = loadCommands();
+
+  let html = `
+  <body style="background:#111827;color:white;font-family:Arial;padding:30px">
+  <h1>Commands</h1>
+  <ul>
+  `;
+
+  for (const cmd in commands) {
+    html += `<li><b>/${cmd}</b> → ${commands[cmd]}</li>`;
+  }
+
+  html += `
+  </ul>
+  <br>
+  <a href="/">Back to Dashboard</a>
+  </body>
+  `;
+
+  res.send(html);
 });
 
 app.listen(3000,()=>console.log('Website running on port 3000'));
