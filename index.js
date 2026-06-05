@@ -327,6 +327,11 @@ client.once('ready', () => {
 
 client.login(process.env.TOKEN);
 
+app.use((req,res,next)=>{
+  res.locals.user = req.user;
+  next();
+});
+
 // ================= WEBSITE LOGIN =================
 app.use(session({ secret: 'sleepy_secret', resave: false, saveUninitialized: false }));
 app.use(passport.initialize());
@@ -353,6 +358,15 @@ app.get('/logout',(req,res)=>req.logout(()=>res.redirect('/')));
 
 // ================= WEBSITE =================
 app.get('/', (req, res) => {
+  if(!req.session.guildId){
+  return res.redirect('/servers');
+ }
+ function getCurrentGuild(req){
+
+  return client.guilds.cache.get(
+    req.session.guildId
+  );
+ }
   if (!req.user) {
     return res.send(`
       <body style="background:#111827;color:white;font-family:Arial;text-align:center;padding-top:100px;">
@@ -668,7 +682,7 @@ app.post('/timeout-user', checkAuth, async (req,res)=>{
 
   try{
 
-    const guild = client.guilds.cache.first();
+    const guild = getCurrentGuild(req)
 
     const member =
       await guild.members.fetch(req.body.userid);
@@ -708,7 +722,7 @@ app.post('/ban-user', checkAuth, async (req,res)=>{
 
   try{
 
-    const guild = client.guilds.cache.first();
+    const guild = getCurrentGuild(req)
 
     await guild.members.ban(req.body.userid);
 
@@ -726,7 +740,7 @@ app.post('/kick-user', checkAuth, async (req,res)=>{
 
   try{
 
-    const guild = client.guilds.cache.first();
+    const guild = getCurrentGuild(req);
 
     const member =
       await guild.members.fetch(req.body.userid);
@@ -741,6 +755,49 @@ app.post('/kick-user', checkAuth, async (req,res)=>{
 
   }
 
+});
+
+app.get('/servers', checkAuth, async (req,res)=>{
+
+  let html = `
+  <body style="
+  background:#111827;
+  color:white;
+  font-family:Arial;
+  padding:30px">
+
+  <h1>Select Server</h1>
+  `;
+
+  client.guilds.cache.forEach(guild=>{
+
+    html += `
+    <div style="
+      background:#1f2937;
+      padding:15px;
+      margin-bottom:15px;
+      border-radius:10px;
+    ">
+      <h2>${guild.name}</h2>
+
+      <a href="/select-server/${guild.id}">
+        Open Dashboard
+      </a>
+    </div>
+    `;
+  });
+
+  html += `</body>`;
+
+  res.send(html);
+});
+
+app.get('/select-server/:id', checkAuth, (req,res)=>{
+
+  req.session.guildId =
+    req.params.id;
+
+  res.redirect('/');
 });
 
 app.listen(3000,()=>console.log('Website running on port 3000'));
