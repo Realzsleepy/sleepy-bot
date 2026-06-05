@@ -106,73 +106,6 @@ app.get('/settings', checkAuth, (req,res)=>{
   `);
 });
 
-app.get('/settings', checkAuth, (req,res)=>{
-
-  const settings = loadSettings();
-
-  res.send(`
-  <body style="
-    background:#111827;
-    color:white;
-    font-family:Arial;
-    padding:30px;
-  ">
-
-  <h1>⚙ AutoMod Settings</h1>
-
-  <form method="POST" action="/settings">
-
-    <h3>Log Channel ID</h3>
-
-    <input
-      name="logChannel"
-      value="${settings.logChannel || ''}"
-      style="width:300px">
-
-    <br><br><hr><br>
-
-    <label>
-      <input
-        type="checkbox"
-        name="antiLinks"
-        ${settings.antiLinks ? 'checked' : ''}>
-      Anti Links
-    </label>
-
-    <br><br>
-
-    <label>
-      <input
-        type="checkbox"
-        name="antiSpam"
-        ${settings.antiSpam ? 'checked' : ''}>
-      Anti Spam
-    </label>
-
-    <br><br>
-
-    <label>
-      <input
-        type="checkbox"
-        name="capsFilter"
-        ${settings.capsFilter ? 'checked' : ''}>
-      Caps Filter
-    </label>
-
-    <br><br>
-
-    <button>Save Settings</button>
-
-  </form>
-
-  <br>
-
-  <a href="/">Back</a>
-
-  </body>
-  `);
-});
-
 // ================= LOG CHANNEL FUNCTION =================
 async function logAction(guild, title, description) {
 
@@ -455,32 +388,49 @@ res.render('dashboard', {
 
 // SEARCH WARNS
 app.get('/warns', checkAuth, async (req, res) => {
-  username.toLowerCase().includes(
-   search.toLowerCase()
-  )
+
+  const warns = loadWarns();
+  const search = req.query.user || '';
 
   let html = `
   <body style="background:#111827;color:white;font-family:Arial;padding:30px">
+
   <h1>Manage Warns</h1>
+
+  <form>
+    <input
+      name="user"
+      placeholder="Username or User ID"
+      value="${search}">
+    <button>Search</button>
+  </form>
+
+  <br>
   `;
 
   for (const guildId in warns) {
+
     for (const userId in warns[guildId]) {
 
-      const user = await client.users.fetch(userId).catch(() => null);
-      const username = user ? user.username : userId;
+      const user =
+        await client.users.fetch(userId)
+        .catch(() => null);
+
+      const username =
+        user ? user.username : userId;
+
       if(search){
 
-  const searchText =
-    search.toLowerCase();
+        const searchText =
+          search.toLowerCase();
 
-  if(
-    !username.toLowerCase().includes(searchText) &&
-    !userId.includes(searchText)
-  ){
-    continue;
-  }
-}
+        if(
+          !username.toLowerCase().includes(searchText) &&
+          !userId.includes(searchText)
+        ){
+          continue;
+        }
+      }
 
       html += `
       <div style="
@@ -489,10 +439,12 @@ app.get('/warns', checkAuth, async (req, res) => {
         margin-bottom:20px;
         border-radius:12px;
       ">
+
       <h2>${username}</h2>
       `;
 
-      warns[guildId][userId].forEach((warn, index) => {
+      warns[guildId][userId].forEach((warn,index)=>{
+
         html += `
         <div style="
           background:#374151;
@@ -500,15 +452,34 @@ app.get('/warns', checkAuth, async (req, res) => {
           margin:10px 0;
           border-radius:8px;
         ">
-          ${warn.reason}<br>
-          <small>${warn.date}</small>
 
-          <form method="POST" action="/delete-warn">
-            <input type="hidden" name="guild" value="${guildId}">
-            <input type="hidden" name="user" value="${userId}">
-            <input type="hidden" name="index" value="${index}">
-            <button>Delete Warn</button>
-          </form>
+        ${warn.reason}
+
+        <br>
+
+        <small>${warn.date}</small>
+
+        <form method="POST" action="/delete-warn">
+
+          <input
+            type="hidden"
+            name="guild"
+            value="${guildId}">
+
+          <input
+            type="hidden"
+            name="user"
+            value="${userId}">
+
+          <input
+            type="hidden"
+            name="index"
+            value="${index}">
+
+          <button>Delete Warn</button>
+
+        </form>
+
         </div>
         `;
       });
@@ -517,22 +488,14 @@ app.get('/warns', checkAuth, async (req, res) => {
     }
   }
 
-  html += `<a href="/">Back to Dashboard</a></body>`;
+  html += `
+  <br>
+  <a href="/">Back to Dashboard</a>
+  </body>
+  `;
 
   res.send(html);
-  html += `
-<form>
-  <input
-    name="user"
-    placeholder="Username or User ID"
-    value="${search}">
-  <button>Search</button>
-</form>
 
-<br>
-
-<a href="/">Back to Dashboard</a>
-`;
 });
 
 app.post('/delete-warn', checkAuth, (req,res)=>{
@@ -703,28 +666,81 @@ app.get('/modlogs', checkAuth, (req,res)=>{
 
 app.post('/timeout-user', checkAuth, async (req,res)=>{
 
-  const guild =
-    client.guilds.cache.first();
+  try{
 
-  const member =
-    await guild.members.fetch(
-      req.body.userId
+    const guild = client.guilds.cache.first();
+
+    const member =
+      await guild.members.fetch(req.body.userid);
+
+    const minutes =
+      Number(req.body.minutes);
+
+    await member.timeout(
+      minutes * 60000
     );
 
-  const minutes =
-    Number(req.body.minutes);
+    res.redirect('/moderation');
 
-  await member.timeout(
-    minutes * 60000
-  );
+  }catch(err){
 
-  logAction(
-    guild,
-    'Dashboard Timeout',
-    `${member.user.tag} (${minutes} minutes)`
-  );
+    res.send(err.message);
 
-  res.redirect('/moderation');
+  }
+
+});
+
+app.post('/settings', checkAuth, (req,res)=>{
+
+  const settings = {
+    logChannel: req.body.logChannel || '',
+    antiLinks: req.body.antiLinks === 'on',
+    antiSpam: req.body.antiSpam === 'on',
+    capsFilter: req.body.capsFilter === 'on'
+  };
+
+  saveSettings(settings);
+
+  res.redirect('/settings');
+});
+
+app.post('/ban-user', checkAuth, async (req,res)=>{
+
+  try{
+
+    const guild = client.guilds.cache.first();
+
+    await guild.members.ban(req.body.userid);
+
+    res.redirect('/moderation');
+
+  }catch(err){
+
+    res.send(err.message);
+
+  }
+
+});
+
+app.post('/kick-user', checkAuth, async (req,res)=>{
+
+  try{
+
+    const guild = client.guilds.cache.first();
+
+    const member =
+      await guild.members.fetch(req.body.userid);
+
+    await member.kick();
+
+    res.redirect('/moderation');
+
+  }catch(err){
+
+    res.send(err.message);
+
+  }
+
 });
 
 app.listen(3000,()=>console.log('Website running on port 3000'));
