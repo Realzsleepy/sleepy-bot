@@ -13,9 +13,15 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 // SESSION
 app.use(session({
-  secret: 'sleepy_secret',
+  secret: process.env.SESSION_SECRET || 'sleepy_secret',
   resave: false,
-  saveUninitialized: false
+  saveUninitialized: false,
+  cookie: {
+    maxAge: 1000 * 60 * 60 * 24 * 30, // 30 days
+    httpOnly: true,
+    secure: true,
+    sameSite: 'lax'
+  }
 }));
 
 // PASSPORT
@@ -83,8 +89,14 @@ app.get('/auth/discord/callback',
 );
 
 // LOGOUT
-app.get('/logout', (req, res) => {
-  req.logout(() => res.redirect('/'));
+app.get('/logout', (req, res, next) => {
+  req.logout(err => {
+    if (err) return next(err);
+
+    req.session.destroy(() => {
+      res.redirect('/');
+    });
+  });
 });
 
 // CREATE COMMAND

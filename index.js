@@ -800,4 +800,14 @@ app.get('/select-server/:id', checkAuth, (req,res)=>{
   res.redirect('/');
 });
 
+app.use((err, req, res, next) => {
+  console.error("DASHBOARD ERROR:");
+  console.error(err);
+
+  res.status(500).send(`
+    <h1>Dashboard Error</h1>
+    <pre>${err.stack}</pre>
+  `);
+});
+
 app.listen(3000,()=>console.log('Website running on port 3000'));
