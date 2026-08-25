@@ -61,7 +61,7 @@ const loadSettings = () =>
 const saveSettings = d =>
   fs.writeFileSync(SETTINGS_FILE, JSON.stringify(d,null,2));
 
-app.get('/settings', checkAuth, (req,res)=>{
+app.get('/settings', checkAuth, requireSelectedGuild, (req,res)=>{
 
   const settings = loadSettings();
 
@@ -343,13 +343,98 @@ passport.deserializeUser((o,d)=>d(null,o));
 passport.use(new DiscordStrategy({
   clientID: process.env.CLIENT_ID,
   clientSecret: process.env.CLIENT_SECRET,
-  callbackURL: "https://sleepy-bot-wiia.onrender.com/auth/discord/callback",
-  scope: ['identify']
-}, (a,r,p,done)=>done(null,p)));
+  callbackURL: 'https://sleepy-bot-wiia.onrender.com/auth/discord/callback',
+  scope: ['identify', 'guilds']
+}, (accessToken, refreshToken, profile, done) => {
+  done(null, {
+    id: profile.id,
+    username: profile.username,
+    discriminator: profile.discriminator,
+    avatar: profile.avatar,
+    accessToken
+  });
+}));
 
 function checkAuth(req,res,next){
   if(!req.user) return res.redirect('/auth/discord');
   next();
+}
+
+function hasDashboardPermission(userGuild) {
+  const permissions = new PermissionsBitField(BigInt(userGuild.permissions));
+
+  return (
+    permissions.has(PermissionsBitField.Flags.Administrator) ||
+    permissions.has(PermissionsBitField.Flags.ManageGuild)
+  );
+}
+
+async function getDiscordGuilds(req) {
+  if (!req.user?.accessToken) {
+    throw new Error('Please log out and log in again.');
+  }
+
+  const response = await fetch(
+    'https://discord.com/api/v10/users/@me/guilds',
+    {
+      headers: {
+        Authorization: `Bearer ${req.user.accessToken}`
+      }
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error('Discord could not verify your server access.');
+  }
+
+  return response.json();
+}
+
+async function getAuthorizedGuild(req, guildId) {
+  const userGuilds = await getDiscordGuilds(req);
+
+  const userGuild = userGuilds.find(guild => guild.id === guildId);
+
+  // User is not in the server, or lacks Manage Server / Administrator.
+  if (!userGuild || !hasDashboardPermission(userGuild)) {
+    return null;
+  }
+
+  // The bot is not in the server.
+  const guild = client.guilds.cache.get(guildId);
+  if (!guild) {
+    return null;
+  }
+
+  // Double-check the user is in the server from the bot's side too.
+  const member = await guild.members.fetch(req.user.id).catch(() => null);
+
+  if (!member) {
+    return null;
+  }
+
+  return guild;
+}
+
+async function requireSelectedGuild(req, res, next) {
+  if (!req.session.guildId) {
+    return res.redirect('/servers');
+  }
+
+  try {
+    const guild = await getAuthorizedGuild(req, req.session.guildId);
+
+    if (!guild) {
+      delete req.session.guildId;
+      return res.redirect('/servers');
+    }
+
+    req.guild = guild;
+    next();
+  } catch (error) {
+    console.error('Guild authorization error:', error);
+    res.status(403).send('Could not verify server access. Please log out and log in again.');
+  }
 }
 
 app.get('/auth/discord', passport.authenticate('discord'));
@@ -357,16 +442,8 @@ app.get('/auth/discord/callback', passport.authenticate('discord',{failureRedire
 app.get('/logout',(req,res)=>req.logout(()=>res.redirect('/')));
 
 // ================= WEBSITE =================
-app.get('/', (req, res) => {
-  if(!req.session.guildId){
-  return res.redirect('/servers');
- }
- function getCurrentGuild(req){
-
-  return client.guilds.cache.get(
-    req.session.guildId
-  );
- }
+app.get('/', checkAuth, requireSelectedGuild, (req, res) => {
+ 
   if (!req.user) {
     return res.send(`
       <body style="background:#111827;color:white;font-family:Arial;text-align:center;padding-top:100px;">
@@ -401,7 +478,7 @@ res.render('dashboard', {
 });
 
 // SEARCH WARNS
-app.get('/warns', checkAuth, async (req, res) => {
+app.get('/warns', checkAuth, requireSelectedGuild, async (req, res) => {
 
   const warns = loadWarns();
   const search = req.query.user || '';
@@ -512,7 +589,7 @@ app.get('/warns', checkAuth, async (req, res) => {
 
 });
 
-app.post('/delete-warn', checkAuth, (req,res)=>{
+app.post('/delete-warn', checkAuth, requireSelectedGuild, (req,res)=>{
   app.use(express.urlencoded({ extended: true }));
   const warns = loadWarns();
   warns[req.body.guild][req.body.user].splice(req.body.index,1);
@@ -520,7 +597,7 @@ app.post('/delete-warn', checkAuth, (req,res)=>{
   res.redirect('/warns');
 });
 
-app.get('/commands', checkAuth, (req, res) => {
+app.get('/commands', checkAuth, requireSelectedGuild, (req, res) => {
 
   const custom = loadCommands();
 
@@ -580,7 +657,7 @@ app.get('/commands', checkAuth, (req, res) => {
   res.send(html);
 });
 
-app.post('/create-command', checkAuth, (req,res)=>{
+app.post('/create-command', checkAuth, requireSelectedGuild, (req,res)=>{
 
   const commands = loadCommands();
 
@@ -594,7 +671,7 @@ app.post('/create-command', checkAuth, (req,res)=>{
   res.redirect('/commands');
 });
 
-app.get('/moderation', checkAuth, (req,res)=>{
+app.get('/moderation', checkAuth, requireSelectedGuild, (req,res)=>{
 
   res.send(`
   <body style="background:#111827;color:white;font-family:Arial;padding:30px">
@@ -642,7 +719,7 @@ app.get('/moderation', checkAuth, (req,res)=>{
   `);
 });
 
-app.get('/modlogs', checkAuth, (req,res)=>{
+app.get('/modlogs', checkAuth, requireSelectedGuild, (req,res)=>{
 
   const logs = loadModLogs();
 
@@ -678,11 +755,11 @@ app.get('/modlogs', checkAuth, (req,res)=>{
   res.send(html);
 });
 
-app.post('/timeout-user', checkAuth, async (req,res)=>{
+app.post('/timeout-user', checkAuth, requireSelectedGuild, async (req,res)=>{
 
   try{
 
-    const guild = getCurrentGuild(req)
+    const guild = req.guild;
 
     const member =
       await guild.members.fetch(req.body.userid);
@@ -704,7 +781,7 @@ app.post('/timeout-user', checkAuth, async (req,res)=>{
 
 });
 
-app.post('/settings', checkAuth, (req,res)=>{
+app.post('/settings', checkAuth, requireSelectedGuild, (req,res)=>{
 
   const settings = {
     logChannel: req.body.logChannel || '',
@@ -718,11 +795,11 @@ app.post('/settings', checkAuth, (req,res)=>{
   res.redirect('/settings');
 });
 
-app.post('/ban-user', checkAuth, async (req,res)=>{
+app.post('/ban-user', checkAuth, requireSelectedGuild, async (req,res)=>{
 
   try{
 
-    const guild = getCurrentGuild(req)
+    const guild = req.guild;
 
     await guild.members.ban(req.body.userid);
 
@@ -736,11 +813,11 @@ app.post('/ban-user', checkAuth, async (req,res)=>{
 
 });
 
-app.post('/kick-user', checkAuth, async (req,res)=>{
+app.post('/kick-user', checkAuth, requireSelectedGuild, async (req,res)=>{
 
   try{
 
-    const guild = getCurrentGuild(req);
+    const guild = req.guild;
 
     const member =
       await guild.members.fetch(req.body.userid);
@@ -757,39 +834,55 @@ app.post('/kick-user', checkAuth, async (req,res)=>{
 
 });
 
-app.get('/servers', checkAuth, async (req,res)=>{
+app.get('/servers', checkAuth, async (req, res) => {
+  try {
+    const userGuilds = await getDiscordGuilds(req);
 
-  let html = `
-  <body style="
-  background:#111827;
-  color:white;
-  font-family:Arial;
-  padding:30px">
+    const allowedGuilds = [];
 
-  <h1>Select Server</h1>
-  `;
+    for (const userGuild of userGuilds) {
+      if (!hasDashboardPermission(userGuild)) continue;
 
-  client.guilds.cache.forEach(guild=>{
+      const guild = client.guilds.cache.get(userGuild.id);
+      if (!guild) continue;
 
-    html += `
-    <div style="
-      background:#1f2937;
-      padding:15px;
-      margin-bottom:15px;
-      border-radius:10px;
-    ">
-      <h2>${guild.name}</h2>
+      const member = await guild.members.fetch(req.user.id).catch(() => null);
+      if (!member) continue;
 
-      <a href="/select-server/${guild.id}">
-        Open Dashboard
-      </a>
-    </div>
+      allowedGuilds.push(guild);
+    }
+
+    let html = `
+      <body style="background:#111827;color:white;font-family:Arial;padding:30px">
+      <h1>Select Server</h1>
     `;
-  });
 
-  html += `</body>`;
+    if (!allowedGuilds.length) {
+      html += `
+        <p>
+          No manageable servers found. You need to be in the server,
+          the bot must be in it, and you need Administrator or Manage Server.
+        </p>
+      `;
+    }
 
-  res.send(html);
+    allowedGuilds.forEach(guild => {
+      html += `
+        <div style="background:#1f2937;padding:15px;margin-bottom:15px;border-radius:10px">
+          <h2>${guild.name}</h2>
+          <a href="/select-server/${guild.id}" style="color:#93c5fd">
+            Open Dashboard
+          </a>
+        </div>
+      `;
+    });
+
+    html += '</body>';
+    res.send(html);
+  } catch (error) {
+    console.error(error);
+    res.status(500).send('Could not load your servers.');
+  }
 });
 
 app.get('/select-server/:id', checkAuth, (req,res)=>{
